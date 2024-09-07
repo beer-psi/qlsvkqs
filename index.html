@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QLSV</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+    <style>
+        [x-cloak] { display: none !important; }
+
+        thead,
+        tfoot {
+        background-color: #2c5e77;
+        color: #fff;
+        }
+
+        tbody {
+        background-color: #e4f0f5;
+        }
+
+        table {
+        border-collapse: collapse;
+        border: 2px solid rgb(140 140 140);
+        font-family: sans-serif;
+        font-size: 0.8rem;
+        letter-spacing: 1px;
+        }
+
+        caption {
+        caption-side: bottom;
+        padding: 10px;
+        }
+
+        th,
+        td {
+        border: 1px solid rgb(160 160 160);
+        padding: 8px 10px;
+        }
+
+        td {
+        text-align: center;
+        }
+
+    </style>
+    <div x-data="main">
+        <div x-cloak x-show="$store.auth.token === null">
+            <label>
+                Tên đăng nhập
+                <input type="text" name="username" id="username" x-model="username">
+            </label>
+            <br />
+            <label>
+                Mật khẩu
+                <input type="password" name="password" id="password" x-model="password">
+            </label>
+            <br />
+            <button @click="await login()">Đăng nhập</button>
+
+            <div x-cloak x-show="loginStatus === false">
+                Tài khoản hoặc mật khẩu không chính xác.
+            </div>
+        </div>
+
+        <div x-cloak x-show="$store.auth.token !== null">
+            <div>
+                Họ và tên: <span x-text="$store.auth.tokenData.hoten"></span><br />
+                MSSV: <span x-text="$store.auth.tokenData.userId"></span>
+            </div>
+            
+            <br />
+
+            <div>
+                <label>
+                    Mã quân trang (X.X.X.XXXXX)
+                    <input type="text" name="uniformCode" id="uniformCode" x-model="uniformCode">
+                </label>
+                <button @click="checkUniformDataFromCode()">Xem thông tin</button>
+                <button @click="borrowUniform()">Xác nhận cấp</button>
+
+                <p x-cloak x-show="fetchedUniformData !== null">
+                    Mã quân trang hợp lệ (<span x-text="fetchedUniformData.chitietmuonquantrangs ? 'đã' : 'chưa'"></span> đăng ký mượn).
+                </p>
+
+                <p x-text="borrowUniformStatus"></p>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">STT</th>
+                        <th scope="col">Code</th>
+                        <th scope="col">Ngày quét</th>
+                        <th scope="col">Đã trả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(uniform, index) in borrowedUniformData.chitietmuonquantrangs" :key="uniform.chitietmuonquantrangid">
+                        <tr>
+                            <td x-text="index + 1"></td>
+                            <td x-text="uniform.quantrang.code"></td>
+                            <td x-text="new Date(uniform.ngaychecknhan).toLocaleString()"></td>
+                            <td x-text="uniform.checkqrcodetra ? 'Đã trả' : ''"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+
+            <br />
+
+            <button @click="logout()">Đăng xuất</button>
+
+        </div>
+    </div>
+    <script>
+        const BASE_URL = "http://qlsvapivps.quanghai.io.vn:3000";
+        const PROXY_URL = "https://soft-donkey-50.deno.dev";
+
+        document.addEventListener("alpine:init", () => {
+            Alpine.store("auth", {
+                _token: localStorage.getItem("token"),
+                _tokenData: null,
+                _cachedTextDecoder: new TextDecoder(),
+
+                async init() {
+                    if (this._token === null) {
+                        return;
+                    }
+
+                    this._tokenData = this._parseTokenData(this._token);
+                },
+
+                _parseTokenData(token) {
+                    const [_, data, __] = token.split(".", 3);
+
+                    return JSON.parse(
+                        this._cachedTextDecoder.decode(
+                            Uint8Array.from(
+                                atob(data),
+                                (m) => m.codePointAt(0),
+                            ),
+                        ),
+                    );
+                },
+
+                get token() {
+                    return this._token;
+                },
+
+                set token(value) {
+                    if (value === null) {
+                        localStorage.removeItem("token");
+                        this._token = null;
+                        this._tokenData = null;
+                        return;
+                    }
+
+                    localStorage.setItem("token", value);
+                    this._token = value;
+                    this._tokenData = this._parseTokenData(this._token);
+                },
+
+                get tokenData() {
+                    return this._tokenData;
+                }
+            });
+
+            Alpine.data("main", () => ({
+                username: "",
+                password: "",
+                loginStatus: null,
+                borrowedUniformData: null,
+
+                uniformCode: "",
+                fetchedUniformData: null,
+
+                borrowUniformStatus: "",
+
+                async init() {
+                    this.borrowedUniformData = await this.getBorrowedUniforms();
+                },
+
+                async login() {
+                    const resp = await fetch(`${PROXY_URL}/${new URL("/users/login", BASE_URL)}`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            username: this.username,
+                            password: this.password,
+                        }),
+                        headers: {
+                            accept: "applcation/json",
+                            "content-type": "application/json",
+                        },
+                    });
+                    
+                    if (!resp.ok) {
+                        this.loginStatus = false;
+                        return;
+                    }
+
+                    const data = await resp.json();
+
+                    if (!data.accessInfo.token) {
+                        this.loginStatus = false;
+                        return;
+                    }
+
+                    const authStore = Alpine.store("auth");
+                    
+                    this.username = "";
+                    this.password = "";
+                    authStore.token = data.accessInfo.token;
+                    this.borrowedUniformData = await this.getBorrowedUniforms();                        
+                },
+
+                async getBorrowedUniforms() {
+                    const { token, tokenData } = Alpine.store("auth");
+
+                    if (!token || !tokenData) {
+                        return;
+                    }
+
+                    const query = new URLSearchParams({
+                        "filter": JSON.stringify({
+                            include: [
+                                { relation: "thongsoquantrang" },
+                                {
+                                    relation: "muonquantrang",
+                                    scope: {
+                                        include: [
+                                            {
+                                                relation: "chitietmuonquantrangs",
+                                                scope: {
+                                                    include: [
+                                                        {
+                                                            relation: "quantrang",
+                                                            scope: {
+                                                                include: [
+                                                                    { relation: "loaiquantrang" },
+                                                                ],
+                                                            },
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            ],
+                        }),
+                    });
+                    const url = new URL(`/sinhvien/${tokenData.userId}?${query}`, BASE_URL);
+                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                        headers: {
+                            accept: "applcation/json",
+                            authorization: `Bearer ${token}`,
+                        },
+                    });
+
+                    if (!resp.ok) {
+                        throw new Error(resp);
+                    }
+
+                    const data = await resp.json();
+                    
+                    return data.muonquantrang;
+                },
+
+                async fetchUniformData(token, code) {
+                    const query = new URLSearchParams({
+                        "filter": JSON.stringify({
+                            where: { code },
+                            include: [
+                                { relation: "loaiquantrang" },
+                                {
+                                    relation: "chitietmuonquantrangs",
+                                    scope: {
+                                        include: [
+                                            {
+                                                relation: "muonquantrang",
+                                                scope: {
+                                                    include: [
+                                                        { relation: "sinhvien" },
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }),
+                    });
+                    const url = new URL(`/quantrangs?${query}`, BASE_URL);
+                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                        headers: {
+                            accept: "applcation/json",
+                            authorization: `Bearer ${token}`,
+                        },
+                    });
+
+                    return (await resp.json())[0];
+                },
+
+                async checkUniformDataFromCode() {
+                    this.fetchedUniformData = null;
+
+                    const { token } = Alpine.store("auth");
+
+                    if (!token) {
+                        return;
+                    };
+
+                    try {
+                        this.fetchedUniformData = await this.fetchUniformData(token, this.uniformCode);
+                    } catch (err) {
+                        console.error("Đã có lỗi khi tìm quân trang: ", err);
+                    }
+                },
+
+                async borrowUniform() {
+                    this.borrowUniformStatus = "";
+
+                    const { token, tokenData } = Alpine.store("auth");
+
+                    if (!token || !tokenData) {
+                        return;
+                    };
+
+                    let data;
+                    try {
+                        data = await this.fetchUniformData(token, this.uniformCode);
+                    } catch (err) {
+                        this.borrowUniformStatus = "Đã có lỗi khi tìm quân trang.";
+                        throw err;
+                    }
+
+                    if (data.chitietmuonquantrangs) {
+                        this.borrowUniformStatus = "Quân trang này đã đăng ký mượn trước đó.";
+                        return;
+                    }
+
+                    const that = this;
+                    const url = new URL(`/sinh-viens/${tokenData.userId}/muonquantrangs/${data.qrcode}`, BASE_URL);
+                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                        method: "POST",
+                        headers: {
+                            accept: "applcation/json",
+                            authorization: `Bearer ${token}`,
+                        },
+                    })
+                        .then((r) => r.json())
+                    
+                    this.borrowUniformStatus = resp.error.message;
+                },
+
+                logout() {
+                    const authStore = Alpine.store("auth");
+
+                    authStore.token = null;
+                }
+            }));
+
+
+        });
+    </script>
+</body>
+</html>
