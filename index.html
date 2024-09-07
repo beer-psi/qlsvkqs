@@ -353,6 +353,8 @@
                     
                     this.borrowUniformStatus = resp.error.message;
                     this.borrowedUniformData = await this.getBorrowedUniforms();
+                    this.borrowUniformStatus = "";
+                    this.fetchedUniformData = null;
                 },
 
                 logout() {
