@@ -211,7 +211,7 @@
                     this.username = "";
                     this.password = "";
                     authStore.token = data.accessInfo.token;
-                    this.borrowedUniformData = await this.getBorrowedUniforms();                        
+                    this.borrowedUniformData = await this.getBorrowedUniforms();
                 },
 
                 async getBorrowedUniforms() {
@@ -352,6 +352,7 @@
                         .then((r) => r.json())
                     
                     this.borrowUniformStatus = resp.error.message;
+                    this.borrowedUniformData = await this.getBorrowedUniforms();
                 },
 
                 logout() {
