@@ -48,12 +48,12 @@
         <div x-cloak x-show="$store.auth.token === null">
             <label>
                 Tên đăng nhập
-                <input type="text" name="username" id="username" x-model="username">
+                <input type="text" autocomplete="username" name="username" id="username" x-model="username">
             </label>
             <br />
             <label>
                 Mật khẩu
-                <input type="password" name="password" id="password" x-model="password">
+                <input type="password" autocomplete="current-password" name="password" id="password" x-model="password">
             </label>
             <br />
             <button @click="await login()">Đăng nhập</button>
