@@ -12,35 +12,35 @@
 
         thead,
         tfoot {
-        background-color: #2c5e77;
-        color: #fff;
+            background-color: #2c5e77;
+            color: #fff;
         }
 
         tbody {
-        background-color: #e4f0f5;
+            background-color: #e4f0f5;
         }
 
         table {
-        border-collapse: collapse;
-        border: 2px solid rgb(140 140 140);
-        font-family: sans-serif;
-        font-size: 0.8rem;
-        letter-spacing: 1px;
+            border-collapse: collapse;
+            border: 2px solid rgb(140 140 140);
+            font-family: sans-serif;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
         }
 
         caption {
-        caption-side: bottom;
-        padding: 10px;
+            caption-side: bottom;
+            padding: 10px;
         }
 
         th,
         td {
-        border: 1px solid rgb(160 160 160);
-        padding: 8px 10px;
+            border: 1px solid rgb(160 160 160);
+            padding: 8px 10px;
         }
 
         td {
-        text-align: center;
+            text-align: center;
         }
 
     </style>
@@ -80,11 +80,7 @@
                 <button @click="checkUniformDataFromCode()">Xem thông tin</button>
                 <button @click="borrowUniform()">Xác nhận cấp</button>
 
-                <p x-cloak x-show="fetchedUniformData !== null">
-                    Mã quân trang hợp lệ (<span x-text="fetchedUniformData.chitietmuonquantrangs ? 'đã' : 'chưa'"></span> đăng ký mượn).
-                </p>
-
-                <p x-text="borrowUniformStatus"></p>
+                <p x-text="uniformStatus"></p>
             </div>
 
             <table>
@@ -94,6 +90,7 @@
                         <th scope="col">Code</th>
                         <th scope="col">Ngày quét</th>
                         <th scope="col">Đã trả</th>
+                        <th scope="col">Huỷ mượn</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -103,6 +100,7 @@
                             <td x-text="uniform.quantrang.code"></td>
                             <td x-text="new Date(uniform.ngaychecknhan).toLocaleString()"></td>
                             <td x-text="uniform.checkqrcodetra ? 'Đã trả' : ''"></td>
+                            <td><button @click="await unborrowUniform(uniform.chitietmuonquantrangid)">Huỷ</button></td>
                         </tr>
                     </template>
                 </tbody>
@@ -117,7 +115,7 @@
     <footer>Đây không phải là sản phẩm của TTGDQPAN ĐHQGHCM. Mình không chịu trách nhiệm nếu bạn gặp phải hoặc gây nên vấn đề khi dùng website này. Vui lòng kiểm tra kỹ mã quân trang có chính xác hay không trước khi đăng ký.</footer>
     <script>
         const BASE_URL = "http://qlsvapivps.quanghai.io.vn:3000";
-        const PROXY_URL = "https://soft-donkey-50.deno.dev";
+        const PROXY_URL = location.protocol === "https:" ? "https://soft-donkey-50.deno.dev/" : "";
 
         document.addEventListener("alpine:init", () => {
             Alpine.store("auth", {
@@ -175,16 +173,20 @@
                 borrowedUniformData: null,
 
                 uniformCode: "",
-                fetchedUniformData: null,
+                uniformStatus: "",
 
-                borrowUniformStatus: "",
+                setUniformStatus(value) {
+                    const that = this;
+                    this.uniformStatus = value;
+                    setTimeout(() => that.uniformStatus = "", 3000);
+                },
 
                 async init() {
                     this.borrowedUniformData = await this.getBorrowedUniforms();
                 },
 
                 async login() {
-                    const resp = await fetch(`${PROXY_URL}/${new URL("/users/login", BASE_URL)}`, {
+                    const resp = await fetch(`${PROXY_URL}${new URL("/users/login", BASE_URL)}`, {
                         method: "POST",
                         body: JSON.stringify({
                             username: this.username,
@@ -212,6 +214,7 @@
                     
                     this.username = "";
                     this.password = "";
+                    this.loginStatus = null;
                     authStore.token = data.accessInfo.token;
                     this.borrowedUniformData = await this.getBorrowedUniforms();
                 },
@@ -253,7 +256,7 @@
                         }),
                     });
                     const url = new URL(`/sinhvien/${tokenData.userId}?${query}`, BASE_URL);
-                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                    const resp = await fetch(`${PROXY_URL}${url}`, {
                         headers: {
                             accept: "applcation/json",
                             authorization: `Bearer ${token}`,
@@ -294,7 +297,7 @@
                         }),
                     });
                     const url = new URL(`/quantrangs?${query}`, BASE_URL);
-                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                    const resp = await fetch(`${PROXY_URL}${url}`, {
                         headers: {
                             accept: "applcation/json",
                             authorization: `Bearer ${token}`,
@@ -305,8 +308,6 @@
                 },
 
                 async checkUniformDataFromCode() {
-                    this.fetchedUniformData = null;
-
                     const { token } = Alpine.store("auth");
 
                     if (!token) {
@@ -314,15 +315,20 @@
                     };
 
                     try {
-                        this.fetchedUniformData = await this.fetchUniformData(token, this.uniformCode);
+                        const data = await this.fetchUniformData(token, this.uniformCode);
+
+                        if (data.chitietmuonquantrangs) {
+                            this.setUniformStatus("Mã quân trang hợp lệ (đã đăng ký mượn).");
+                        } else {
+                            this.setUniformStatus("Mã quân trang hợp lệ (chưa đăng ký mượn).");
+                        }
                     } catch (err) {
-                        console.error("Đã có lỗi khi tìm quân trang: ", err);
+                        this.setUniformStatus("Đã có lỗi khi tìm quân trang.");
+                        throw err;
                     }
                 },
 
                 async borrowUniform() {
-                    this.borrowUniformStatus = "";
-
                     const { token, tokenData } = Alpine.store("auth");
 
                     if (!token || !tokenData) {
@@ -333,18 +339,18 @@
                     try {
                         data = await this.fetchUniformData(token, this.uniformCode);
                     } catch (err) {
-                        this.borrowUniformStatus = "Đã có lỗi khi tìm quân trang.";
+                        this.setUniformStatus("Đã có lỗi khi tìm quân trang.");
                         throw err;
                     }
 
                     if (data.chitietmuonquantrangs) {
-                        this.borrowUniformStatus = "Quân trang này đã đăng ký mượn trước đó.";
+                        this.setUniformStatus("Quân trang này đã đăng ký mượn trước đó.");
                         return;
                     }
 
                     const that = this;
                     const url = new URL(`/sinh-viens/${tokenData.userId}/muonquantrangs/${data.qrcode}`, BASE_URL);
-                    const resp = await fetch(`${PROXY_URL}/${url}`, {
+                    const resp = await fetch(`${PROXY_URL}${url}`, {
                         method: "POST",
                         headers: {
                             accept: "applcation/json",
@@ -353,16 +359,41 @@
                     })
                         .then((r) => r.json())
                     
-                    this.borrowUniformStatus = resp.error.message;
+                    this.setUniformStatus(resp.error.message);
                     this.borrowedUniformData = await this.getBorrowedUniforms();
-                    this.borrowUniformStatus = "";
-                    this.fetchedUniformData = null;
+                },
+
+                async unborrowUniform(borrowDetailId) {
+                    const { token } = Alpine.store("auth");
+
+                    if (!token || !confirm("Bạn có chắc chắn huỷ mượn quân trang?")) {
+                        return;
+                    }
+
+                    const url = new URL(`/chitietmuonquantrangs/${borrowDetailId}`, BASE_URL);
+                    const resp = await fetch(`${PROXY_URL}${url}`, {
+                        method: "DELETE",
+                        headers: {
+                            accept: "applcation/json",
+                            authorization: `Bearer ${token}`,
+                        },
+                    });
+
+                    if (!resp.ok) {
+                        this.setUniformStatus("Đã có lỗi xảy ra khi huỷ đăng ký quân trang.");
+                        return;
+                    }
+
+                    this.borrowedUniformData = await this.getBorrowedUniforms();
                 },
 
                 logout() {
                     const authStore = Alpine.store("auth");
 
                     authStore.token = null;
+                    this.borrowedUniformData = null;
+                    this.uniformCode = "";
+                    this.uniformStatus = "";
                 }
             }));
 
