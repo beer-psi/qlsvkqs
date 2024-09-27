@@ -90,7 +90,7 @@
                         <th scope="col">Code</th>
                         <th scope="col">Ngày quét</th>
                         <th scope="col">Đã trả</th>
-                        <th scope="col">Huỷ mượn</th>
+                        <th scope="col">Huỷ mượn/Trả</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,7 +100,10 @@
                             <td x-text="uniform.quantrang.code"></td>
                             <td x-text="new Date(uniform.ngaychecknhan).toLocaleString()"></td>
                             <td x-text="uniform.checkqrcodetra ? 'Đã trả' : ''"></td>
-                            <td><button @click="await unborrowUniform(uniform.chitietmuonquantrangid)">Huỷ</button></td>
+                            <td>
+                                <button @click="await unborrowUniform(uniform.chitietmuonquantrangid)">Huỷ</button>
+                                <button x-show="!uniform.checkqrcodetra" @click="await returnUniform(uniform.quantrang.qrcode)">Trả</button>
+                            </td>
                         </tr>
                     </template>
                 </tbody>
@@ -381,6 +384,38 @@
 
                     if (!resp.ok) {
                         this.setUniformStatus("Đã có lỗi xảy ra khi huỷ đăng ký quân trang.");
+                        return;
+                    }
+
+                    this.borrowedUniformData = await this.getBorrowedUniforms();
+                },
+
+                async returnUniform(qrCode) {
+                    const { token } = Alpine.store("auth");
+
+                    if (!token || !confirm("Bạn có chắc chắn muốn trả quân trang?")) {
+                        return;
+                    }
+
+                    const url = new URL(
+                        `/muonquantrangs/${this.borrowedUniformData.muonquantrangid}/chitietmuonquantrangs/${qrCode}`,
+                        BASE_URL
+                    );
+                    const resp = await fetch(`${PROXY_URL}${url}`, {
+                        method: "PATCH",
+                        headers: {
+                            accept: "applcation/json",
+                            authorization: `Bearer ${token}`,
+                            "content-type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            checkqrcodetra: true,
+                            ngaychecktra: new Date().toISOString(),
+                        }),
+                    });
+
+                    if (!resp.ok) {
+                        this.setUniformStatus("Đã có lỗi xảy ra khi trả quân trang.");
                         return;
                     }
 
