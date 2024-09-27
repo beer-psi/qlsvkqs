@@ -140,7 +140,7 @@
                     return JSON.parse(
                         this._cachedTextDecoder.decode(
                             Uint8Array.from(
-                                atob(data),
+                                atob(data.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/")),
                                 (m) => m.codePointAt(0),
                             ),
                         ),
