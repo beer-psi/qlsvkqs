@@ -18,6 +18,7 @@ function addCorsIfNeeded(response: Response) {
         headers.set("access-control-allow-origin", "https://beer-psi.github.io");
         headers.set("access-control-allow-credentials", "true");
         headers.set("access-control-allow-headers", "Authorization, Content-Type");
+        headers.set("access-control-allow-methods", "GET, POST, PATCH");
     }
 
     return headers;
