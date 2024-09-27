@@ -81,6 +81,7 @@
                 <button @click="borrowUniform()">Xác nhận cấp</button>
 
                 <p x-text="uniformStatus"></p>
+                <p x-cloak x-show="$store.config.quettra">Đã đến thời gian trả quân trang.</p>
             </div>
 
             <table>
@@ -89,8 +90,8 @@
                         <th scope="col">STT</th>
                         <th scope="col">Code</th>
                         <th scope="col">Ngày quét</th>
-                        <th scope="col">Đã trả</th>
-                        <th scope="col">Huỷ mượn/Trả</th>
+                        <th x-cloak x-show="$store.config.quettra" scope="col">Đã trả</th>
+                        <th scope="col">Huỷ mượn<span x-cloak x-show="$store.config.quettra">/Trả</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -99,10 +100,10 @@
                             <td x-text="index + 1"></td>
                             <td x-text="uniform.quantrang.code"></td>
                             <td x-text="new Date(uniform.ngaychecknhan).toLocaleString()"></td>
-                            <td x-text="uniform.checkqrcodetra ? 'Đã trả' : ''"></td>
+                            <td x-cloak x-show="$store.config.quettra" x-text="uniform.checkqrcodetra ? 'Đã trả' : ''"></td>
                             <td>
                                 <button @click="await unborrowUniform(uniform.chitietmuonquantrangid)">Huỷ</button>
-                                <button x-show="!uniform.checkqrcodetra" @click="await returnUniform(uniform.quantrang.qrcode)">Trả</button>
+                                <button x-cloak x-show="$store.config.quettra && !uniform.checkqrcodetra" @click="await returnUniform(uniform.quantrang.qrcode)">Trả</button>
                             </td>
                         </tr>
                     </template>
@@ -167,6 +168,27 @@
                 get tokenData() {
                     return this._tokenData;
                 }
+            });
+
+            Alpine.store("config", {
+                async init() {
+                    const url = new URL("/thamsohethongs", BASE_URL);
+                    const rawConfig = await fetch(`${PROXY_URL}${url}`).then((r) => r.json());
+
+                    for (const item of rawConfig) {
+                        switch (item.Kieudulieu) {
+                            case "boolean":
+                                this[item.Tenloai] = item.Giatri === "1";
+                                break;
+                            case "number":
+                                this[item.Tenloai] = Number(item.Giatri);
+                                break;
+                            default:
+                                this[item.Tenloai] = item.Giatri;
+                                break;
+                        }
+                    }
+                },
             });
 
             Alpine.data("main", () => ({
